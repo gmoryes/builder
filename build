@@ -1,0 +1,129 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+
+use POSIX ":sys_wait_h";
+use Getopt::Long;
+use Term::ANSIColor;
+
+sub print_color {
+  my ($param, @text) = @_;
+  print color($param);
+  print @text;
+  print color('reset');
+}
+
+my $CONFIG = {}; 
+GetOptions($CONFIG, qw/ 
+  config
+  aim=s
+  tmp-log=s
+  help
+/);
+
+if ($CONFIG->{help}) {
+  print("Build script\n");
+  print("\t--config - For configure build dir.\n");
+  print("\t--aim - Aim for make. Use after configure dir.\n");
+  print("\t--tmp-log - Path to log file, default: \"/tmp/build.log\"\n");
+  exit;
+}
+
+my $home = $ENV{"HOME"};
+my $config_dir = "$home/.builder_script";
+$CONFIG->{'tmp-log'} ||= "/tmp/build.log";
+
+if ($CONFIG->{config}) {
+  if (!(-e $config_dir)) {
+    system("mkdir $config_dir");
+  }
+
+  my $config_file = $config_dir."/config";
+
+  if (-e $config_file) {
+    open(my $fh, "<", $config_file) or die $!;
+    my $build_dir = <$fh>;
+    if ($build_dir) {
+      print_color("blue", "Current build dir: ");
+      print_color("bold green", "$build_dir\n");
+    }
+    close($fh);
+  }
+
+  open(my $fh, ">", $config_file) or die "$! $@";
+  print_color("bold yellow", "Type build dir (path to cmake-build-debug for ex.):\n");
+  my $build_dir = <>;
+  print $fh $build_dir;
+  close($fh);
+  print_color("bold green", "Config done!\n");
+  exit;
+}
+
+if (!(-e "$config_dir/config")) {
+  print_color("bold red", "Must do configure before using, type: build --config\n");
+  exit;
+}
+
+open(my $fh, "<", "$config_dir/config") or die $!;
+my $build_dir = <$fh>;
+$build_dir =~ s/\n//gm;
+if (not $build_dir) {
+  print_color("bold red", "Can not get build dir from $config_dir/config\n");
+  exit;
+}
+
+if (not $CONFIG->{aim}) {
+  print_color("bold red", "Must specify aim for make (--aim option)\n");
+  exit;
+}
+
+
+my $aim = $CONFIG->{aim};
+my $tmp_file = $CONFIG->{'tmp-log'};
+
+my $prev_len = 0;
+sub print_percent {
+  my $percent = shift;
+  my $line = shift;
+  $line =~ s/\n//gm;
+  my $str = " " x $prev_len;
+  print "\r".$str."\r";
+  $str = "[ $percent / 100 ], line >> $line";
+  $prev_len = length($str);
+
+  my $white = "[ $percent / 100 ], line >> ";
+  my $green = $line;
+  print($white);
+  print_color("green", $green);
+}
+
+sub print_last_percent {
+  my $str = " " x $prev_len;
+  print "\r".$str."\r";
+  $str = "[ 100 / 100 ] Build done!\n";
+  print("[ 100 / 100 ] ");
+  print_color("bold green", "Build done!\n");
+}
+
+system("rm -rf $tmp_file > /dev/null 2>&1");
+my $pid = fork;
+if (!$pid) {
+  chdir($build_dir);
+  system("make -j8 $aim > $tmp_file 2>&1");
+  exit;
+} else {
+  my $max = 0;
+  while (waitpid($pid, WNOHANG) <= 0) {
+    my $line = `tail -1 $tmp_file 2> /dev/null`;
+    my ($percent) = ($line =~ m/\[.*?(\d+).*\].*/);
+    $percent = 0 if not $percent;
+    if ($percent > $max) {
+      $max = $percent;
+    }
+    print_percent($max, $line) if $percent;
+    sleep 0.2;
+  }
+  $max = 100;
+  print_last_percent();
+}
