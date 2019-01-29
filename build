@@ -3,6 +3,8 @@
 use strict;
 use warnings;
 
+use feature qw(say);
+
 use POSIX ":sys_wait_h";
 use Getopt::Long;
 use Term::ANSIColor;
@@ -106,11 +108,28 @@ sub print_last_percent {
   print_color("bold green", "Build done!\n");
 }
 
+sub print_error {
+  my $str = " " x $prev_len;
+  print "\r".$str."\r";
+  print_color("bold red", "Error! See to $tmp_file for details.\n");
+}
+
+my $tmp_file_res = "/tmp/".rand;
+sub get_res {
+  open(my $fh, "<", $tmp_file_res);
+  my $line = <$fh>;
+  chomp($line);
+  return $line;
+}
+
 system("rm -rf $tmp_file > /dev/null 2>&1");
 my $pid = fork;
 if (!$pid) {
   chdir($build_dir);
-  system("make -j8 $aim > $tmp_file 2>&1");
+  my $res = system("make -j8 $aim > $tmp_file 2>&1");
+  open(my $fh, ">", $tmp_file_res);
+  print $fh $res;
+  close($fh);
   exit;
 } else {
   my $max = 0;
@@ -125,5 +144,12 @@ if (!$pid) {
     sleep 0.2;
   }
   $max = 100;
-  print_last_percent();
+  my $res = get_res();
+  if ($res) {
+    print_error();
+    exit 1;
+  } else {
+    print_last_percent();
+    exit 0;
+  }
 }
