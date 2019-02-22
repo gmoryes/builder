@@ -130,7 +130,7 @@ if (!$pid) {
   chdir($build_dir);
   my $clion_pid = 0;
   if ($CONFIG->{stop}) {
-    my $clion_pid = `ps xa | grep 'MacOS/clion' | grep -v 'grep'`;
+    $clion_pid = `ps xa | grep 'MacOS/clion' | grep -v 'grep'`;
     chomp($clion_pid);
     ($clion_pid) = ($clion_pid =~ m/(\d+).*/);
     system("kill -s STOP $clion_pid");
