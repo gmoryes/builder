@@ -21,14 +21,16 @@ GetOptions($CONFIG, qw/
   config
   aim=s
   tmp-log=s
+  stop
   help
 /);
 
 if ($CONFIG->{help}) {
   print("Build script\n");
-  print("\t--config - For configure build dir.\n");
-  print("\t--aim - Aim for make. Use after configure dir.\n");
+  print("\t--config  - For configure build dir.\n");
+  print("\t--aim     - Aim for make. Use after configure dir.\n");
   print("\t--tmp-log - Path to log file, default: \"/tmp/build.log\"\n");
+  print("\t--stop    - To stop Clion during build\n");
   exit;
 }
 
@@ -126,7 +128,17 @@ system("rm -rf $tmp_file > /dev/null 2>&1");
 my $pid = fork;
 if (!$pid) {
   chdir($build_dir);
+  my $clion_pid = 0;
+  if ($CONFIG->{stop}) {
+    my $clion_pid = `ps xa | grep 'MacOS/clion' | grep -v 'grep'`;
+    chomp($clion_pid);
+    ($clion_pid) = ($clion_pid =~ m/(\d+).*/);
+    system("kill -s STOP $clion_pid");
+  }
   my $res = system("make -j8 $aim > $tmp_file 2>&1");
+  if ($CONFIG->{stop}) {
+    system("kill -s CONT $clion_pid");
+  }
   open(my $fh, ">", $tmp_file_res);
   print $fh $res;
   close($fh);
